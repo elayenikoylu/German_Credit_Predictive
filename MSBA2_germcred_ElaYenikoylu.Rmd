@@ -1,0 +1,121 @@
+---
+title: "MSBA2_germcred_ElaYenikoylu"
+author: "Captain Jack Sparrow"
+date: "12/14/2020"
+output: html_document
+---
+
+```{r setup, echo = FALSE}
+knitr::opts_chunk$set(
+	echo = FALSE,
+	message = FALSE,
+	warning = FALSE
+)
+library(readxl)
+my_german <- read_excel("german credit card.xls")
+
+print(my_german[1:20,1:5])
+
+```
+
+## This is how my data looks like - - sample of 10 obs and 5 vars.
+
+We are looking at the first 20 observations and the first 5 variables looks like the 20 german credit card costumers are different (heterogeneous). My next step would be to clean up a few variables.
+
+```{r massaging}
+#using gsub to replace data (patterns)
+my_german$new_purpose <- gsub("X", "", my_german$purpose)
+
+
+# back to converting the data type for purpose
+my_german$purpose <- as.numeric(my_german$new_purpose)
+
+# converting good/bad to numeric
+my_german$binary <- as.numeric(as.factor(my_german$good_bad)) -1
+
+summary(my_german$binary)
+```
+
+## Commentary for binary
+
+Based on the summary statistics for binary, we are concluding that we have 70% customers that are a business success and 30% of the customers that are a business failure.
+
+```{r modeling}
+random_sample <- function(df, n ){
+  
+  training_indexes <- sample(1:nrow(df), n*nrow(df)) ## replace = FALSE by default
+
+  training_dataset <- df[training_indexes, ]
+  testing_dataset <- df[-training_indexes, ]
+    return(list(training_dataset, testing_dataset))
+  } # closing random_sample
+
+my_random_output <- random_sample(df = my_german, n = 0.8)
+
+```
+
+
+
+```{r}
+training_data <- my_random_output[[1]] # List needs double square brackets (getting training data)
+testing_data <- my_random_output[[2]] # Getting testing data
+
+
+# run a logistic for actual data with units
+
+my_logit <- glm(binary ~ checking+duration+age+telephon+amount+savings+installp+coapp,
+    data = training_data, family = "binomial")
+
+
+summary(my_logit)
+
+exp(0.6608)
+```
+
+## Commentary for Logistic Regression
+Based on the randomly sample logistic regression we are looking at a 0.6608 coefficient for checking, which means that every additional checking account that I open will increase the odds of business success by 0.936341.
+
+
+```{r}
+library(ROCR)   ### More important
+my_prediction_testing <- predict(my_logit, testing_data, type = "response")
+
+pred_val_logit <- prediction(my_prediction_testing, testing_data$binary)
+
+perf_logit <- performance(pred_val_logit, "tpr", "fpr")
+
+plot(perf_logit, col="blue")
+```
+
+
+Above what you see is a plot shows how my ligistic regression model permorms in terms of AUC-ROC. Next we will put the same data in a decision tree. 
+
+```{r}
+library(rpart)
+library(rpart.plot)
+library(titanic)
+
+my_germ_tree <- rpart(binary ~ age+checking+duration+amount+savings+installp,
+                      data = training_data, method = "class", cp = 0.025)
+
+rpart.plot(my_germ_tree, type = 1, extra = 1,
+            box.palette = c("pink", "green"), branch.lty = 3, shadow.col = "gray")
+
+plotcp(my_germ_tree)
+```
+
+```{r}
+my_germ_tree_predict <- predict(my_germ_tree, testing_data, type = "prob")
+my_germ_tree_prediction <- prediction(my_germ_tree_predict[,2], testing_data$binary)
+
+my_germ_tree_performance <- performance(my_germ_tree_prediction, "tpr", "fpr")
+
+plot(my_germ_tree_performance, col = "black", lty =3, lwd =3)
+plot(perf_logit, col="blue", lty = 3, lwd = 3, add = TRUE)
+
+```
+
+## Model comparison business insights
+
+The two models perform in a similar fashion. However, the logistic regression has a slightly higher AUC ROC than my decision tree. What is more, it looks that the variables that the tree selected and the most important variables from my logistic regression are the same/similar. I think it would be beneficial to test this using stratified data. and maybe the models would perform better.
+
